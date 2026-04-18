@@ -3,6 +3,7 @@
 > All notable changes to this project are documented in this file.
 
 ### v1.0 Release
+=======
 - Initial public release of ACC Dungeon Macro for Roblox Anime Card Clash on AutoHotkey v2.
 - OCR-driven modifier detection and auto-pick flow with score/rank priority logic.
 - Manual and automated controls via hotkeys: `F4/F6/F7/F8/F9/F10`.
