@@ -1,0 +1,13 @@
+# Runtime logs
+*.log
+
+# Runtime screenshots/output
+webhook_shots/
+
+# Local-only webhook config (contains secrets if enabled)
+Settings/webhook_config.ini
+
+# Optional local runtime/output artifacts
+*.tmp
+*.bak
+*.cache
