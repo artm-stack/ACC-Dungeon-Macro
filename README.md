@@ -8,15 +8,27 @@ AutoHotkey v2 macro for modifier picking and team build automation in Roblox ACC
 - `Lib/OCR.ahk` (required dependency)
 - `Settings/region.ini` (region template)
 - `Settings/team_cards.ini` (team config template)
+- `Settings/modifier_ranks.ini` (modifier priority ranks)
 
 ## Hotkeys
 
 - `F4` Toggle region overlay editor
 - `F6` Toggle macro ON/OFF
+- `F5` FORCE STOP macro/team build immediately
 - `F7` Force one modifier pick
 - `F8` Reset modifier scores
 - `F9` Manual UPG team build (clears cards first, then open with `T`, close with `Z`)
 - `F10` Exit script
+
+## Main UI
+
+- `Start` changes dynamically to `Stop` when macro is ON.
+- `FORCE STOP` button immediately stops macro loop and requests team-build stop.
+- Buttons: `Start/Stop`, `FORCE STOP`, `Pick Now`, `Reset Count`, `Build Team`, `Ranks`, `Edit Regions`.
+- Toggles: `Auto Jump`, `Auto Minimize`.
+- Status text color: `ON` = green, `OFF` = red.
+- `Ranks` opens rank editor UI (lower rank = higher priority).
+- Slot Detection shows matched modifier names for `S1/S2/S3` and marks the last selected slot with `<--`.
 
 ## Setup
 

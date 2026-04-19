@@ -15,10 +15,9 @@ Welcome to the ACC Dungeon Macro wiki. This guide covers what users need to run,
 7. [Team Config Reference](#7-team-config-reference)
 8. [Region Calibration Guide](#8-region-calibration-guide)
 9. [Files and Logging](#9-files-and-logging)
-10. [Safety and Publish Hygiene](#10-safety-and-publish-hygiene)
-11. [Troubleshooting](#11-troubleshooting)
-12. [Compatibility Notes](#12-compatibility-notes)
-13. [FAQ](#13-faq)
+10. [Troubleshooting](#10-troubleshooting)
+11. [Compatibility Notes](#11-compatibility-notes)
+12. [FAQ](#12-faq)
 
 ---
 
@@ -39,15 +38,16 @@ The script reads game UI text, then makes decisions based on:
 
 ## 2) Getting Started
 
-1. Install ![AutoHotkey v2](https://www.autohotkey.com/v2/).
+1. Install [AutoHotkey v2](https://www.autohotkey.com/v2/).
 2. Keep files in this structure:
-   `ACC_Dungeon.ahk`, `Lib/OCR.ahk`, `Settings/region.ini`, `Settings/team_cards.ini`.
-3. Launch ![Roblox](https://www.roblox.com/).
-4. Open ![Anime Card Clash](https://www.roblox.com/games/110829983956014/Anime-Card-Clash)
+   `ACC_Dungeon.ahk`, `Lib/OCR.ahk`, `Settings/region.ini`, `Settings/team_cards.ini`, `Settings/modifier_ranks.ini`.
+3. Launch [Roblox](https://www.roblox.com/).
+4. Open [Anime Card Clash](https://www.roblox.com/games/110829983956014/Anime-Card-Clash).
 5. Run `ACC_Dungeon.ahk`.
 6. Press `F4` and calibrate regions if needed.
 7. Press `F6` to enable modifier automation.
 8. Press `F9` to run UPG team build manually.
+9. Use `F5` or `FORCE STOP` for immediate emergency stop.
 
 ---
 
@@ -55,15 +55,39 @@ The script reads game UI text, then makes decisions based on:
 
 - `F4` Toggle region overlay editor.
 - `F6` Toggle modifier macro ON/OFF.
+- `F5` Force stop macro loop and request team-build stop.
 - `F7` Force one modifier pick now.
 - `F8` Reset modifier scores.
 - `F9` Run manual UPG team build.
 - `F10` Exit script.
 
+Main UI buttons:
+
+- `Start` / `Stop` (dynamic label based on running state)
+- `FORCE STOP`
+- `Pick Now`
+- `Reset Count`
+- `Build Team`
+- `Ranks`
+- `Edit Regions`
+- `Auto Jump` toggle
+- `Auto Minimize` toggle
+
+Status colors:
+
+- ON = green
+- OFF = red
+
 UPG behavior on `F9`:
 
 - Existing attack/support cards are removed first.
 - Team UI opens, picks are performed, then UI closes with `Z`.
+
+Slot Detection panel:
+
+- Shows matched modifier names for `S1/S2/S3`.
+- Marks the last selected slot with `<--`.
+- Shows `(none)` when a slot is empty, or `Unknown` when OCR text does not match known modifiers.
 
 ---
 
@@ -211,6 +235,7 @@ Main runtime/config files:
 - `Lib/OCR.ahk` OCR dependency.
 - `Settings/region.ini` saved regions.
 - `Settings/team_cards.ini` team definitions.
+- `Settings/modifier_ranks.ini` modifier ranking priority config.
 - `Settings/modifier_scores.ini` modifier counts/scores.
 - `ACC_mod.log` runtime log output.
 
@@ -272,3 +297,11 @@ A. Support starts from the attack set index that succeeded. If attack falls back
 Q. Where do I see what the macro is doing?
 
 A. Check `ACC_mod.log` for action logs and OCR/debug traces.
+
+Q. What does FORCE STOP do?
+
+A. It immediately stops the macro timer and signals team-build loops to stop on their next stop-check.
+
+Q. What does Slot Detection show?
+
+A. It shows the matched modifier name per slot (`S1/S2/S3`) and an arrow on the last selected slot.

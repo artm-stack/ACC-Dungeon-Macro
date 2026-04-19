@@ -8,11 +8,13 @@
 ; F8 = Reset scores
 ; F9 = UPG Team Build (clear deck -> T -> Build -> Z)
 ; F10 = Exit
+; F5 = Force stop macro/team build
 
 global RUNNING := false
 global WINDOW_TITLE := "Roblox"
 global SETTINGS_DIR := A_ScriptDir "\Settings"
 global SAVE_FILE := SETTINGS_DIR "\modifier_scores.ini"
+global RANK_FILE := SETTINGS_DIR "\modifier_ranks.ini"
 global REGION_FILE := SETTINGS_DIR "\region.ini"
 global LEGACY_REGION_FILE := SETTINGS_DIR "\modifier_only_regions.ini"
 global TEAM_CONFIG_FILE := SETTINGS_DIR "\team_cards.ini"
@@ -29,6 +31,7 @@ global IS_BUSY := false
 global LAST_ACTION := "Idle"
 global MAIN_SCAN_INTERVAL_MS := 200
 global AUTO_JUMP_ENABLED := true
+global AUTO_MINIMIZE_ENABLED := false
 global AUTO_JUMP_TICK := 0
 global AUTO_JUMP_COOLDOWN_MS := 300000
 global PICK_SHAKE_ENABLED := true
@@ -90,11 +93,16 @@ global UiStatus := 0
 global UiAction := 0
 global UiScores := 0
 global UiAutoJump := 0
+global UiAutoMinimize := 0
 global UiSlotDetect := 0
+global UiBtnToggle := 0
+global UiRankEditor := 0
+global UiRankInputs := Map()
 
 global SLOT_DETECT_1 := "(none)"
 global SLOT_DETECT_2 := "(none)"
 global SLOT_DETECT_3 := "(none)"
+global SLOT_DETECT_SELECTED := 0
 
 global OCR_ENABLED := true
 global OCR_OPTIONS_DEFAULT := Map("scale", 3.0, "grayscale", true, "invertcolors", false, "monochrome", 0)
@@ -125,15 +133,15 @@ global SLOT_REGIONS := [
 
 ; Lower rank = higher priority
 global MODIFIERS := [
-    Map("name", "Defense", "score", 0, "defaultScore", 0, "max", 6,  "rank", 1, "aliases", ["heavy defense", "defense"]),
-    Map("name", "Health", "score", 0, "defaultScore", 0, "max", 10, "rank", 2, "aliases", ["health buff", "health"]),
-    Map("name", "Piercing", "score", 0, "defaultScore", 0, "max", "", "rank", 3, "aliases", ["piercing blow", "piercing"]),
-    Map("name", "Healing", "score", 0, "defaultScore", 0, "max", 7, "rank", 4, "aliases", ["healing touch", "healing"]),
-    Map("name", "Damage", "score", 0, "defaultScore", 0, "max", 10, "rank", 5, "aliases", ["damage buff", "damage"]),
-    Map("name", "Bloodthirst", "score", 0, "defaultScore", 0, "max", 15, "rank", 6, "aliases", ["bloodthirst"]),
-    Map("name", "Ackerman", "score", 0, "defaultScore", 0, "max", "", "rank", 7, "aliases", ["ackerman support", "ackerman"]),
-    Map("name", "Lucky", "score", 0, "defaultScore", 0, "max", "", "rank", 8, "aliases", ["lucky hand", "lucky"]),
-    Map("name", "High Roller", "score", 0, "defaultScore", 0, "max", "", "rank", 9, "aliases", ["high roller", "roller"])
+    Map("name", "Defense", "score", 0, "defaultScore", 0, "max", 6,  "rank", 1, "defaultRank", 1, "aliases", ["heavy defense", "defense"]),
+    Map("name", "Health", "score", 0, "defaultScore", 0, "max", 10, "rank", 2, "defaultRank", 2, "aliases", ["health buff", "health"]),
+    Map("name", "Piercing", "score", 0, "defaultScore", 0, "max", "", "rank", 3, "defaultRank", 3, "aliases", ["piercing blow", "piercing"]),
+    Map("name", "Healing", "score", 0, "defaultScore", 0, "max", 7, "rank", 4, "defaultRank", 4, "aliases", ["healing touch", "healing"]),
+    Map("name", "Damage", "score", 0, "defaultScore", 0, "max", 10, "rank", 5, "defaultRank", 5, "aliases", ["damage buff", "damage"]),
+    Map("name", "Bloodthirst", "score", 0, "defaultScore", 0, "max", 15, "rank", 6, "defaultRank", 6, "aliases", ["bloodthirst"]),
+    Map("name", "Ackerman", "score", 0, "defaultScore", 0, "max", "", "rank", 7, "defaultRank", 7, "aliases", ["ackerman support", "ackerman"]),
+    Map("name", "Lucky", "score", 0, "defaultScore", 0, "max", "", "rank", 8, "defaultRank", 8, "aliases", ["lucky hand", "lucky"]),
+    Map("name", "High Roller", "score", 0, "defaultScore", 0, "max", "", "rank", 9, "defaultRank", 9, "aliases", ["high roller", "roller"])
 ]
 
 global PRIMARY_ATTACK_CARDS := ["Cosmic Villain", "Awakened Eclipseborn Hawk", "King of Helheim | The Almighty", "Divine Emperor | Lion of Justice | Wrathful Sin"]
@@ -149,6 +157,7 @@ CoordMode("Mouse", "Client")
 InitOCR()
 LoadRegions()
 LoadScores()
+LoadRanks()
 LoadTeamCardConfig()
 InitGui()
 UpdateGui()
@@ -160,9 +169,11 @@ F7::ManualPick()
 F8::ResetScores()
 F9::ManualTeamBuild()
 F10::ExitScript()
+F5::ForceStopMacro()
 
 ToggleMacro(*) {
-    global RUNNING, LAST_ACTION
+    global RUNNING, LAST_ACTION, TEAM_BUILD_STOP_REQUESTED
+    TEAM_BUILD_STOP_REQUESTED := false
     RUNNING := !RUNNING
     if RUNNING
         SetTimer(WatchModifierScreen, MAIN_SCAN_INTERVAL_MS)
@@ -174,6 +185,32 @@ ToggleMacro(*) {
     Log(msg)
     ShowTip(msg)
     UpdateGui()
+    if RUNNING
+        MaybeAutoMinimizeUi()
+}
+
+ForceStopMacro(*) {
+    global RUNNING, LAST_ACTION, TEAM_BUILD_STOP_REQUESTED
+    RUNNING := false
+    TEAM_BUILD_STOP_REQUESTED := true
+    SetTimer(WatchModifierScreen, 0)
+    LAST_ACTION := "FORCE STOP triggered"
+    Log(LAST_ACTION)
+    ShowTip(LAST_ACTION)
+    UpdateGui()
+}
+
+MinimizeMainUi(*) {
+    global Ui
+    if IsObject(Ui) {
+        try Ui.Minimize()
+    }
+}
+
+MaybeAutoMinimizeUi() {
+    global AUTO_MINIMIZE_ENABLED
+    if AUTO_MINIMIZE_ENABLED
+        MinimizeMainUi()
 }
 
 ManualPick(*) {
@@ -192,6 +229,7 @@ ManualPick(*) {
     }
     PickBestSlot()
     UpdateGui()
+    MaybeAutoMinimizeUi()
 }
 
 ManualTeamBuild(*) {
@@ -207,6 +245,7 @@ ManualTeamBuild(*) {
     }
 
     TEAM_BUILD_STOP_REQUESTED := false
+    MaybeAutoMinimizeUi()
     ok := BuildTeamFromConfig(&pickedAttack, &pickedSupport, true)
     if ok
         LAST_ACTION := "Build Team done (ATK=" pickedAttack ", SUP=" pickedSupport ")"
@@ -399,20 +438,6 @@ SelectAttackTab() {
 SelectSupportTab() {
     global SUPPORT_TAB_REGION
     ClickTabReliable(SUPPORT_TAB_REGION, "Support Tab")
-}
-
-ClearTeamSearchInput() {
-    global TEAM_SEARCH_REGION, SEARCH_UNFOCUS_REGION
-    if !FocusRegion(TEAM_SEARCH_REGION, "Search Clear")
-        return false
-    Sleep 40
-    SendEvent("^a")
-    Sleep 40
-    SendEvent("{Backspace}")
-    Sleep 70
-    ClickRegionCenter(SEARCH_UNFOCUS_REGION, "Search Clear Unfocus")
-    Sleep 90
-    return true
 }
 
 ClickTabReliable(tabRegion, label := "Tab") {
@@ -863,6 +888,7 @@ IsModifierScreenOpen() {
 
 PickBestSlot() {
     global LAST_ACTION, LAST_PICK_TICK, DUPLICATE_PICK_GUARD_MS, LAST_PICK_SIGNATURE, LAST_PICK_SIGNATURE_TICK
+    global SLOT_DETECT_SELECTED
     global PICK_REGISTER_DELAY_MS, PICK_REGISTER_RETRIES
     detectedSlots := []
     detections := []
@@ -921,6 +947,7 @@ PickBestSlot() {
     }
 
     best["mod"]["score"] += 1
+    SLOT_DETECT_SELECTED := GetSlotIndexFromName(best["slot"]["name"])
     LAST_PICK_TICK := A_TickCount
     LAST_PICK_SIGNATURE := pickSig
     LAST_PICK_SIGNATURE_TICK := LAST_PICK_TICK
@@ -931,11 +958,6 @@ PickBestSlot() {
     ShowTip(msg)
     UpdateGui()
     return true
-}
-
-DetectModifierInSlot(slot) {
-    text := OCRTextFromRegion(slot, OCR_OPTIONS_SLOT)
-    return MatchModifierFromText(text)
 }
 
 DetectModifierInSlotDetailed(slot) {
@@ -1125,6 +1147,43 @@ SaveScores() {
     EnsureDirectory(SETTINGS_DIR)
     for mod in MODIFIERS
         IniWrite(mod["score"], SAVE_FILE, "Scores", mod["name"])
+}
+
+LoadRanks() {
+    EnsureDirectory(SETTINGS_DIR)
+    if !FileExist(RANK_FILE) {
+        SaveRanks()
+        return
+    }
+    for mod in MODIFIERS {
+        defaultRank := mod["defaultRank"]
+        loadedRank := Integer(IniRead(RANK_FILE, "Ranks", mod["name"], defaultRank))
+        if (loadedRank < 1)
+            loadedRank := defaultRank
+        mod["rank"] := loadedRank
+    }
+}
+
+SaveRanks() {
+    EnsureDirectory(SETTINGS_DIR)
+    for mod in MODIFIERS {
+        rank := Integer(mod["rank"])
+        if (rank < 1)
+            rank := mod["defaultRank"]
+        IniWrite(rank, RANK_FILE, "Ranks", mod["name"])
+    }
+}
+
+ResetRanksToDefault(*) {
+    global LAST_ACTION, UiRankEditor
+    for mod in MODIFIERS
+        mod["rank"] := mod["defaultRank"]
+    SaveRanks()
+    LAST_ACTION := "Ranks reset to default"
+    Log(LAST_ACTION)
+    UpdateGui()
+    if IsObject(UiRankEditor)
+        RefreshRankEditorInputs()
 }
 
 LoadTeamCardConfig() {
@@ -1362,51 +1421,66 @@ ShowTip(msg) {
 }
 
 InitGui() {
-    global Ui, UiStatus, UiAction, UiScores, UiAutoJump, UiSlotDetect, AUTO_JUMP_ENABLED
-    Ui := Gui("+AlwaysOnTop +Border -MaximizeBox -MinimizeBox", "ACC Modifier Only")
+    global Ui, UiStatus, UiAction, UiScores, UiAutoJump, UiAutoMinimize
+    global UiSlotDetect, UiBtnToggle
+    global AUTO_JUMP_ENABLED, AUTO_MINIMIZE_ENABLED
+    Ui := Gui("+AlwaysOnTop +Border -MinimizeBox -MaximizeBox", "ACC Dungeon Macro")
     Ui.SetFont("s9", "Consolas")
 
-    UiStatus := Ui.AddText("xm ym w260", "Status: OFF")
-    UiAction := Ui.AddText("xm w260", "Last: Idle")
-    autoJumpOpts := "xm w260 vAutoJumpChk"
+    UiStatus := Ui.AddText("xm ym w240", "Status: OFF")
+    UiAction := Ui.AddText("xm w240", "Last: Idle")
+    UiScores := Ui.AddEdit("xm w240 r12 ReadOnly -Wrap -VScroll -HScroll")
+    UiSlotDetect := Ui.AddEdit("xm w240 r4 ReadOnly -Wrap -VScroll -HScroll")
+
+    UiBtnToggle := Ui.AddButton("xm w110", "Start")
+    btnForceStop := Ui.AddButton("x+10 w110", "FORCE STOP")
+    btnPick := Ui.AddButton("xm w110", "Pick Now")
+    btnReset := Ui.AddButton("x+10 w110", "Reset Count")
+    btnTeamBuild := Ui.AddButton("xm w110", "Build Team")
+    btnRanks := Ui.AddButton("x+10 w110", "Ranks")
+    btnOverlay := Ui.AddButton("xm w240", "Edit Regions")
+    autoJumpOpts := "xm w240 vAutoJumpChk"
     if AUTO_JUMP_ENABLED
         autoJumpOpts .= " Checked"
-    UiAutoJump := Ui.AddCheckBox(autoJumpOpts, "Auto Jump (5 min)")
-    UiScores := Ui.AddEdit("xm w260 r10 ReadOnly -Wrap VScroll")
-    UiSlotDetect := Ui.AddEdit("xm w260 r4 ReadOnly -Wrap VScroll")
+    UiAutoJump := Ui.AddCheckBox(autoJumpOpts, "Auto Jump")
+    autoMinOpts := "xm w240 vAutoMinChk"
+    if AUTO_MINIMIZE_ENABLED
+        autoMinOpts .= " Checked"
+    UiAutoMinimize := Ui.AddCheckBox(autoMinOpts, "Auto Minimize")
 
-    btnToggle := Ui.AddButton("xm w125", "Start / Stop (F6)")
-    btnPick := Ui.AddButton("x+10 w125", "Pick Now (F7)")
-    btnReset := Ui.AddButton("xm w125", "Reset (F8)")
-    btnTeamBuild := Ui.AddButton("x+10 w125", "UPG Team (F9)")
-    btnExit := Ui.AddButton("xm w260", "Exit (F10)")
-    btnOverlay := Ui.AddButton("xm w260", "Edit Regions (F4)")
-
-    btnToggle.OnEvent("Click", ToggleMacro)
+    UiBtnToggle.OnEvent("Click", ToggleMacro)
+    btnForceStop.OnEvent("Click", ForceStopMacro)
     btnPick.OnEvent("Click", ManualPick)
     btnReset.OnEvent("Click", ResetScores)
     btnTeamBuild.OnEvent("Click", ManualTeamBuild)
-    btnExit.OnEvent("Click", ExitScript)
+    btnRanks.OnEvent("Click", OpenRankEditor)
     btnOverlay.OnEvent("Click", ToggleOverlay)
     UiAutoJump.OnEvent("Click", ToggleAutoJumpFromGui)
+    UiAutoMinimize.OnEvent("Click", ToggleAutoMinimizeFromGui)
     Ui.OnEvent("Close", ExitScript)
 
-    winW := 286
-    winH := 478
+    winW := 266
+    winH := 500
     winX := A_ScreenWidth - winW - 30
     winY := 120
     Ui.Show("x" winX " y" winY " w" winW " h" winH)
 }
 
 UpdateGui() {
-    global UiStatus, UiAction, UiScores, UiAutoJump, UiSlotDetect
-    global RUNNING, LAST_ACTION, AUTO_JUMP_ENABLED
+    global UiStatus, UiAction, UiScores, UiAutoJump, UiAutoMinimize
+    global UiSlotDetect, UiBtnToggle
+    global RUNNING, LAST_ACTION, AUTO_JUMP_ENABLED, AUTO_MINIMIZE_ENABLED
     if !IsObject(UiStatus)
         return
     UiStatus.Text := "Status: " (RUNNING ? "ON" : "OFF")
+    UiStatus.Opt(RUNNING ? "cGreen" : "cRed")
     UiAction.Text := "Last: " LAST_ACTION
+    if IsObject(UiBtnToggle)
+        UiBtnToggle.Text := RUNNING ? "Stop" : "Start"
     if IsObject(UiAutoJump)
         UiAutoJump.Value := AUTO_JUMP_ENABLED ? 1 : 0
+    if IsObject(UiAutoMinimize)
+        UiAutoMinimize.Value := AUTO_MINIMIZE_ENABLED ? 1 : 0
     UiScores.Value := BuildScoresText()
     if IsObject(UiSlotDetect)
         UiSlotDetect.Value := BuildSlotDetectText()
@@ -1420,6 +1494,100 @@ ToggleAutoJumpFromGui(ctrl, *) {
     LAST_ACTION := "Auto Jump " (AUTO_JUMP_ENABLED ? "ON" : "OFF")
     Log(LAST_ACTION)
     UpdateGui()
+}
+
+ToggleAutoMinimizeFromGui(ctrl, *) {
+    global AUTO_MINIMIZE_ENABLED, LAST_ACTION
+    AUTO_MINIMIZE_ENABLED := (ctrl.Value = 1)
+    LAST_ACTION := "Auto Minimize " (AUTO_MINIMIZE_ENABLED ? "ON" : "OFF")
+    Log(LAST_ACTION)
+    UpdateGui()
+}
+
+OpenRankEditor(*) {
+    global UiRankEditor, UiRankInputs
+    if IsObject(UiRankEditor) {
+        try UiRankEditor.Show()
+        return
+    }
+
+    UiRankInputs := Map()
+    UiRankEditor := Gui("+AlwaysOnTop +Border -MinimizeBox", "Modifier Rank Editor")
+    UiRankEditor.SetFont("s9", "Consolas")
+    UiRankEditor.AddText("xm ym w300", "Lower rank = higher priority")
+
+    yOpts := "xm y+8"
+    for mod in MODIFIERS {
+        UiRankEditor.AddText(yOpts " w185", mod["name"])
+        input := UiRankEditor.AddEdit("x+8 w70 Number", mod["rank"])
+        UiRankInputs[mod["name"]] := input
+        yOpts := "xm y+8"
+    }
+
+    btnSave := UiRankEditor.AddButton("xm y+12 w95", "Save")
+    btnDefaults := UiRankEditor.AddButton("x+8 w120", "Reset Default")
+    btnClose := UiRankEditor.AddButton("x+8 w77", "Close")
+    btnSave.OnEvent("Click", SaveRanksFromUi)
+    btnDefaults.OnEvent("Click", ResetRanksFromEditor)
+    btnClose.OnEvent("Click", CloseRankEditor)
+    UiRankEditor.OnEvent("Close", CloseRankEditor)
+    UiRankEditor.Show("w330 h430")
+}
+
+CloseRankEditor(*) {
+    global UiRankEditor, UiRankInputs
+    if IsObject(UiRankEditor) {
+        try UiRankEditor.Destroy()
+    }
+    UiRankEditor := 0
+    UiRankInputs := Map()
+}
+
+RefreshRankEditorInputs() {
+    global UiRankInputs
+    for mod in MODIFIERS {
+        if UiRankInputs.Has(mod["name"])
+            UiRankInputs[mod["name"]].Value := mod["rank"]
+    }
+}
+
+ResetRanksFromEditor(*) {
+    ResetRanksToDefault()
+    ShowTip("Ranks reset to default")
+}
+
+SaveRanksFromUi(*) {
+    global UiRankInputs, LAST_ACTION
+    changed := false
+    for mod in MODIFIERS {
+        if !UiRankInputs.Has(mod["name"])
+            continue
+        raw := Trim(UiRankInputs[mod["name"]].Value)
+        if (raw = "") {
+            newRank := mod["rank"]
+        } else if RegExMatch(raw, "^\d+$") {
+            newRank := Integer(raw)
+        } else {
+            newRank := mod["rank"]
+        }
+        if (newRank < 1)
+            newRank := 1
+        if (newRank != mod["rank"]) {
+            mod["rank"] := newRank
+            changed := true
+        }
+        UiRankInputs[mod["name"]].Value := mod["rank"]
+    }
+
+    if changed {
+        SaveRanks()
+        LAST_ACTION := "Modifier ranks updated"
+        Log(LAST_ACTION)
+        UpdateGui()
+        ShowTip("Ranks saved")
+    } else {
+        ShowTip("No rank changes")
+    }
 }
 
 ExitScript(*) {
@@ -1660,11 +1828,20 @@ BuildScoresText() {
 }
 
 BuildSlotDetectText() {
-    global SLOT_DETECT_1, SLOT_DETECT_2, SLOT_DETECT_3
+    global SLOT_DETECT_1, SLOT_DETECT_2, SLOT_DETECT_3, SLOT_DETECT_SELECTED
+    s1 := "S1: " SLOT_DETECT_1
+    s2 := "S2: " SLOT_DETECT_2
+    s3 := "S3: " SLOT_DETECT_3
+    if (SLOT_DETECT_SELECTED = 1)
+        s1 .= " <--"
+    if (SLOT_DETECT_SELECTED = 2)
+        s2 .= " <--"
+    if (SLOT_DETECT_SELECTED = 3)
+        s3 .= " <--"
     text := "Slot Detection`r`n"
-    text .= "S1: " SLOT_DETECT_1 "`r`n"
-    text .= "S2: " SLOT_DETECT_2 "`r`n"
-    text .= "S3: " SLOT_DETECT_3
+    text .= s1 "`r`n"
+    text .= s2 "`r`n"
+    text .= s3
     return text
 }
 
@@ -1705,10 +1882,16 @@ BuildSlotDetectValue(detections, index) {
 
     d := detections[index]
     raw := Trim(d["text"])
-    if (raw = "")
-        raw := "(none)"
     if IsObject(d["mod"])
-        return d["mod"]["name"] " | OCR=`"" raw "`""
-    return "Unknown | OCR=`"" raw "`""
+        return d["mod"]["name"]
+    if (raw = "")
+        return "(none)"
+    return "Unknown"
+}
+
+GetSlotIndexFromName(slotName) {
+    if RegExMatch(slotName, "i)slot\s*(\d+)", &m)
+        return Integer(m[1])
+    return 0
 }
 
